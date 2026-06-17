@@ -1,5 +1,5 @@
 import logging
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import psutil
 
 app = Flask(__name__)
@@ -29,8 +29,20 @@ def get_process_info(proc):
     return None
 
 
+SORT_FIELDS = {
+    "cpu": "cpu_percent",
+    "memory": "memory_mb",
+    "pid": "pid",
+    "name": "name",
+}
+
+
 @app.route("/processes", methods=["GET"])
 def get_processes():
+    sort_by = request.args.get("sort", "").lower()
+    order = request.args.get("order", "desc").lower()
+    reverse = order != "asc"
+
     processes = []
     skipped = 0
     for proc in psutil.process_iter():
@@ -39,11 +51,19 @@ def get_processes():
             processes.append(info)
         else:
             skipped += 1
+
+    sort_field = SORT_FIELDS.get(sort_by)
+    if sort_field:
+        processes.sort(key=lambda p: p[sort_field], reverse=reverse)
+        logger.info("Sorted by %s (%s)", sort_field, "desc" if reverse else "asc")
+
     logger.info("Retrieved %d processes, skipped %d", len(processes), skipped)
     return jsonify({
         "processes": processes,
         "count": len(processes),
         "skipped": skipped,
+        "sort": sort_by if sort_field else None,
+        "order": "desc" if reverse else "asc",
     })
 
 
